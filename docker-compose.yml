@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   mcp-weather:
     container_name: mcp-weather-server
