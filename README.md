@@ -4,7 +4,11 @@ A simple weather MCP example, that using Docker, OAuth, Python, SSL
 * Output: temperature
 # mcp/.env
 Register your app on [auth0.com](https://manage.auth0.com)  
-Put the following content in the mcp/.env and define your values:
+Put the following content in the mcp/.env
+```
+nano mcp/.env
+```
+Define your values:
 ```
 ISSUER_URL=https://your-domain.auth0.com/
 AUDIENCE=https://your-api-identifier

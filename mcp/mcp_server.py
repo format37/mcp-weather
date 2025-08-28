@@ -143,6 +143,24 @@ def create_app():
     
     return app
 
+# Create the app instance at module level for uvicorn
+app = create_app()
+
 if __name__ == "__main__":
-    app = create_app()
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # uvicorn.run(app, host="0.0.0.0", port=8000)
+    PORT = int(os.getenv("PORT", "8000"))
+    SSL_CERTFILE = os.getenv("SSL_CERTFILE", None)
+    SSL_KEYFILE = os.getenv("SSL_KEYFILE", None)
+
+    uvicorn_kwargs = {
+        "app": app,
+        "host": "0.0.0.0",
+        "port": PORT,
+        "log_level": "info"
+    }
+
+    if SSL_CERTFILE and SSL_KEYFILE:
+        uvicorn_kwargs["ssl_certfile"] = SSL_CERTFILE
+        uvicorn_kwargs["ssl_keyfile"] = SSL_KEYFILE
+
+    uvicorn.run(**uvicorn_kwargs)
