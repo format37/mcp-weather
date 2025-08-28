@@ -3,9 +3,23 @@ version: '3.8'
 services:
   mcp-weather:
     container_name: mcp-weather-server
+    # restart: unless-stopped
+    runtime: runc
     build: mcp
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    network_mode: host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/letsencrypt/live/rtlm.info/fullchain.pem:/server/fullchain.pem:ro
+      - /etc/letsencrypt/live/rtlm.info/privkey.pem:/server/privkey.pem:ro
     environment:
       - PORT=8000
-    # restart: unless-stopped
+    environment:
+      - TZ=UTC
+    
