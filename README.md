@@ -12,3 +12,9 @@ SECRET_KEY=your-client-secret  # Or fetch JWKS for RS256
 ```
 # Work in progress..
 Need to complete the docker implementation and ssl support
+# Installation
+```
+git clone https://github.com/format37/mcp-weather.git
+cd mcp-weather
+./compose.sh
+```
