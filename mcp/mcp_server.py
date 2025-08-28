@@ -148,7 +148,7 @@ app = create_app()
 
 if __name__ == "__main__":
     # uvicorn.run(app, host="0.0.0.0", port=8000)
-    PORT = int(os.getenv("PORT", "8000"))
+    PORT = int(os.getenv("PORT", "9000"))
     SSL_CERTFILE = os.getenv("SSL_CERTFILE", None)
     SSL_KEYFILE = os.getenv("SSL_KEYFILE", None)
 

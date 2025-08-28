@@ -4,8 +4,6 @@ services:
     # restart: unless-stopped
     runtime: runc
     build: mcp
-    # ports:
-    #   - "8000:8000"
     logging:
       options:
         max-size: "10m"
@@ -17,6 +15,6 @@ services:
       - /etc/letsencrypt/live/rtlm.info/fullchain.pem:/server/fullchain.pem:ro
       - /etc/letsencrypt/live/rtlm.info/privkey.pem:/server/privkey.pem:ro
     environment:
-      - PORT=8000
+      - PORT=9000
       - TZ=UTC
     
