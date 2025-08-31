@@ -1,166 +1,228 @@
-import requests
-from typing import Annotated
-import asyncio
-import json
-from mcp.server.fastmcp import FastMCP
-import jwt
-from jwt.exceptions import InvalidTokenError
-from dotenv import load_dotenv
-import os
+import datetime
 import logging
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-import uvicorn
+from typing import Any, Literal
 
-logging.basicConfig(level=logging.INFO)
+import click
+import requests
+from pydantic import AnyHttpUrl
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from mcp.server.auth.settings import AuthSettings
+from mcp.server.fastmcp.server import FastMCP
+from mcp.server.auth.provider import AccessToken, TokenVerifier
+
 logger = logging.getLogger(__name__)
 
-load_dotenv()  # Load .env for secrets
 
-# OAuth settings for Auth0
-ISSUER_URL = os.getenv("ISSUER_URL")
-AUDIENCE = os.getenv("AUDIENCE")
-ALGORITHM = "RS256"
+class IntrospectionTokenVerifier(TokenVerifier):
+    """Token verifier that uses OAuth 2.0 Token Introspection (RFC 7662)."""
 
-logger.info(f"ISSUER_URL: {ISSUER_URL}")
-logger.info(f"AUDIENCE: {AUDIENCE}")
+    def __init__(
+        self,
+        introspection_endpoint: str,
+        server_url: str,
+        validate_resource: bool = False,
+    ):
+        self.introspection_endpoint = introspection_endpoint
+        self.server_url = server_url
+        self.validate_resource = validate_resource
 
-# Your weather tool function
+    async def verify_token(self, token: str) -> AccessToken | None:
+        """Verify token via introspection endpoint."""
+        import httpx
+
+        # Validate URL to prevent SSRF attacks
+        if not self.introspection_endpoint.startswith(("https://", "http://localhost", "http://127.0.0.1")):
+            logger.warning(f"Rejecting introspection endpoint with unsafe scheme: {self.introspection_endpoint}")
+            return None
+
+        # Configure secure HTTP client
+        timeout = httpx.Timeout(10.0, connect=5.0)
+        limits = httpx.Limits(max_connections=10, max_keepalive_connections=5)
+
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            limits=limits,
+            verify=True,  # Enforce SSL verification
+        ) as client:
+            try:
+                response = await client.post(
+                    self.introspection_endpoint,
+                    data={"token": token},
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+
+                if response.status_code != 200:
+                    logger.debug(f"Token introspection returned status {response.status_code}")
+                    return None
+
+                data = response.json()
+                if not data.get("active", False):
+                    return None
+
+                return AccessToken(
+                    token=token,
+                    client_id=data.get("client_id", "unknown"),
+                    scopes=data.get("scope", "").split() if data.get("scope") else [],
+                    expires_at=data.get("exp"),
+                    resource=data.get("aud"),
+                )
+            except Exception as e:
+                logger.warning(f"Token introspection failed: {e}")
+                return None
+
+
+class ResourceServerSettings(BaseSettings):
+    """Settings for the MCP Resource Server."""
+
+    model_config = SettingsConfigDict(env_prefix="MCP_RESOURCE_")
+
+    # Server settings
+    host: str = "0.0.0.0"
+    port: int = 9000
+    server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:9000")
+
+    # Authorization Server settings
+    auth_server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:9001")
+    auth_server_introspection_endpoint: str = "http://localhost:9001/introspect"
+
+    # MCP settings
+    mcp_scope: str = "user"
+
+    # RFC 8707 resource validation
+    oauth_strict: bool = False
+
 def current_temperature(lat: float, lon: float):
+    """Get current temperature from Open-Meteo API."""
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m"
     r = requests.get(url).json()
     return r["hourly"]["temperature_2m"][0]
 
-# Token verification function for Auth0 JWT
-def verify_auth0_token(token: str):
-    try:
-        logger.info(f"Verifying token: {token[:20]}...")
-        
-        # Get JWKS from Auth0
-        jwks_url = f"{ISSUER_URL}/.well-known/jwks.json"
-        jwks_response = requests.get(jwks_url, timeout=10)
-        jwks_response.raise_for_status()
-        jwks = jwks_response.json()
-        
-        # Get key ID from token header
-        unverified_header = jwt.get_unverified_header(token)
-        kid = unverified_header.get("kid")
-        
-        # Find matching key
-        public_key = None
-        for key in jwks["keys"]:
-            if key.get("kid") == kid:
-                public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
-                break
-        
-        if not public_key:
-            logger.error(f"No matching key found for kid: {kid}")
-            return None
-        
-        # Verify token
-        payload = jwt.decode(
-            token, 
-            public_key, 
-            algorithms=[ALGORITHM], 
-            audience=AUDIENCE, 
-            issuer=ISSUER_URL
-        )
-        
-        logger.info(f"Token verified for subject: {payload.get('sub')}")
-        return payload
-        
-    except InvalidTokenError as e:
-        logger.error(f"Invalid token: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Token verification error: {e}")
-        return None
 
-# Custom middleware for OAuth authentication
-class OAuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # Skip authentication for OPTIONS requests (CORS preflight)
-        if request.method == "OPTIONS":
-            return await call_next(request)
-            
-        # Check for Authorization header
-        auth_header = request.headers.get("authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-            return Response(
-                content=json.dumps({"error": "Missing or invalid authorization header"}),
-                status_code=401,
-                headers={"content-type": "application/json"}
-            )
-        
-        token = auth_header[7:]  # Remove "Bearer " prefix
-        user_payload = verify_auth0_token(token)
-        
-        if not user_payload:
-            return Response(
-                content=json.dumps({"error": "Invalid token"}),
-                status_code=401,
-                headers={"content-type": "application/json"}
-            )
-        
-        # Add user info to request state for use in handlers
-        request.state.user = user_payload
-        return await call_next(request)
+def create_resource_server(settings: ResourceServerSettings) -> FastMCP:
+    """
+    Create MCP Resource Server with token introspection.
 
-# Initialize FastMCP
-mcp = FastMCP(name="Weather MCP Server")
-
-# Expose the weather tool as an MCP tool 
-@mcp.tool()
-async def get_current_temperature(lat: Annotated[float, "Latitude"], lon: Annotated[float, "Longitude"]) -> float:
-    """Fetches the current temperature at the given latitude and longitude."""
-    logger.info(f"Fetching temperature for lat={lat}, lon={lon}")
-    return current_temperature(lat, lon)
-
-# Create FastAPI app with middleware
-def create_app():
-    app = FastAPI(title="Weather MCP Server with OAuth")
-    
-    # Add CORS middleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["https://claude.ai", "https://*.claude.ai", "http://localhost:*"], # ToDo: Check other providers too
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
+    This server:
+    1. Provides protected resource metadata (RFC 9728)
+    2. Validates tokens via Authorization Server introspection
+    3. Serves MCP tools and resources
+    """
+    # Create token verifier for introspection
+    token_verifier = IntrospectionTokenVerifier(
+        introspection_endpoint=settings.auth_server_introspection_endpoint,
+        server_url=str(settings.server_url),
+        validate_resource=settings.oauth_strict,
     )
-    
-    # Add OAuth middleware
-    app.add_middleware(OAuthMiddleware)
-    
-    # Mount the MCP server
-    from starlette.applications import Starlette
-    from starlette.routing import Mount
-    
-    # Get the MCP app
-    mcp_app = mcp.streamable_http_app()
-    app.mount("/mcp", mcp_app)
-    
+
+    # Create FastMCP server as a Resource Server
+    app = FastMCP(
+        name="Weather MCP Resource Server",
+        instructions="Resource Server that validates tokens via Authorization Server introspection",
+        host=settings.host,
+        port=settings.port,
+        debug=True,
+        # Auth configuration for RS mode
+        token_verifier=token_verifier,
+        auth=AuthSettings(
+            issuer_url=settings.auth_server_url,
+            required_scopes=[settings.mcp_scope],
+            resource_server_url=settings.server_url,
+        ),
+    )
+
+    @app.tool()
+    async def get_current_temperature(lat: float, lon: float) -> float:
+        """
+        Fetches the current temperature at the given latitude and longitude.
+        
+        This tool demonstrates weather data access protected by OAuth authentication.
+        User must be authenticated to access it.
+        """
+        logger.info(f"Fetching temperature for lat={lat}, lon={lon}")
+        return current_temperature(lat, lon)
+
+    @app.tool()
+    async def get_time() -> dict[str, Any]:
+        """
+        Get the current server time.
+
+        This tool demonstrates that system information can be protected
+        by OAuth authentication. User must be authenticated to access it.
+        """
+        now = datetime.datetime.now()
+
+        return {
+            "current_time": now.isoformat(),
+            "timezone": "UTC",
+            "timestamp": now.timestamp(),
+            "formatted": now.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
     return app
 
-# Create the app instance at module level for uvicorn
-app = create_app()
+
+@click.command()
+@click.option("--port", default=9000, help="Port to listen on")
+@click.option("--auth-server", default="http://localhost:9001", help="Authorization Server URL")
+@click.option(
+    "--transport",
+    default="streamable-http",
+    type=click.Choice(["sse", "streamable-http"]),
+    help="Transport protocol to use ('sse' or 'streamable-http')",
+)
+@click.option(
+    "--oauth-strict",
+    is_flag=True,
+    help="Enable RFC 8707 resource validation",
+)
+def main(port: int, auth_server: str, transport: Literal["sse", "streamable-http"], oauth_strict: bool) -> int:
+    """
+    Run the MCP Resource Server.
+
+    This server:
+    - Provides RFC 9728 Protected Resource Metadata
+    - Validates tokens via Authorization Server introspection
+    - Serves MCP tools requiring authentication
+
+    Must be used with a running Authorization Server.
+    """
+    logging.basicConfig(level=logging.INFO)
+
+    try:
+        # Parse auth server URL
+        auth_server_url = AnyHttpUrl(auth_server)
+
+        # Create settings
+        host = "0.0.0.0"
+        server_url = f"http://{host}:{port}"
+        settings = ResourceServerSettings(
+            host=host,
+            port=port,
+            server_url=AnyHttpUrl(server_url),
+            auth_server_url=auth_server_url,
+            auth_server_introspection_endpoint=f"{auth_server}/introspect",
+            oauth_strict=oauth_strict,
+        )
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        logger.error("Make sure to provide a valid Authorization Server URL")
+        return 1
+
+    try:
+        mcp_server = create_resource_server(settings)
+
+        logger.info(f"🚀 MCP Resource Server running on {settings.server_url}")
+        logger.info(f"🔑 Using Authorization Server: {settings.auth_server_url}")
+
+        # Run the server - this should block and keep running
+        mcp_server.run(transport=transport)
+        logger.info("Server stopped")
+        return 0
+    except Exception:
+        logger.exception("Server error")
+        return 1
+
 
 if __name__ == "__main__":
-    # uvicorn.run(app, host="0.0.0.0", port=8000)
-    PORT = int(os.getenv("PORT", "9000"))
-    SSL_CERTFILE = os.getenv("SSL_CERTFILE", None)
-    SSL_KEYFILE = os.getenv("SSL_KEYFILE", None)
-
-    uvicorn_kwargs = {
-        "app": app,
-        "host": "0.0.0.0",
-        "port": PORT,
-        "log_level": "info"
-    }
-
-    if SSL_CERTFILE and SSL_KEYFILE:
-        uvicorn_kwargs["ssl_certfile"] = SSL_CERTFILE
-        uvicorn_kwargs["ssl_keyfile"] = SSL_KEYFILE
-
-    uvicorn.run(**uvicorn_kwargs)
+    main()

@@ -1,6 +1,21 @@
 services:
+  mcp-weather-auth:
+    container_name: mcp-weather-auth-server
+    build: 
+      context: mcp
+      dockerfile: Dockerfile.auth
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "9001:9001"
+    environment:
+      - TZ=UTC
+    command: ["python", "-m", "mcp_simple_auth.auth_server", "--port=9001"]
+
   mcp-weather:
-    container_name: mcp-weather-server
+    container_name: mcp-weather-resource-server
     # restart: unless-stopped
     runtime: runc
     build: mcp
@@ -17,4 +32,7 @@ services:
     environment:
       - PORT=9000
       - TZ=UTC
+    command: ["python", "mcp_server.py", "--port=9000", "--auth-server=http://localhost:9001"]
+    depends_on:
+      - mcp-weather-auth
     
