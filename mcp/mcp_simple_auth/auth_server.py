@@ -35,8 +35,8 @@ class AuthServerSettings(BaseModel):
     # Server settings
     host: str = "0.0.0.0"
     port: int = 9001
-    server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:9001")
-    auth_callback_path: str = "http://localhost:9001/login/callback"
+    server_url: AnyHttpUrl = AnyHttpUrl("https://rtlm.info:9001")
+    auth_callback_path: str = "https://rtlm.info:9001/login/callback"
 
 
 class SimpleAuthProvider(SimpleOAuthProvider):
@@ -67,7 +67,6 @@ def create_authorization_server(server_settings: AuthServerSettings, auth_settin
         ),
         required_scopes=[auth_settings.mcp_scope],
         resource_server_url=None,
-        development_mode=True,  # Allow HTTP URLs for development
     )
 
     # Create OAuth routes
@@ -134,6 +133,13 @@ def create_authorization_server(server_settings: AuthServerSettings, auth_settin
         )
     )
 
+    # Add health check endpoint
+    async def health_check_handler(request: Request) -> Response:
+        """Health check endpoint."""
+        return JSONResponse({"status": "healthy", "service": "mcp-auth-server"})
+
+    routes.append(Route("/health", endpoint=health_check_handler, methods=["GET"]))
+
     return Starlette(routes=routes)
 
 
@@ -184,7 +190,7 @@ def main(port: int) -> int:
 
     # Create server settings
     host = "0.0.0.0"
-    server_url = f"http://{host}:{port}"
+    server_url = f"https://rtlm.info:{port}"
     server_settings = AuthServerSettings(
         host=host,
         port=port,

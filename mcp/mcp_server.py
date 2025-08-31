@@ -80,11 +80,11 @@ class ResourceServerSettings(BaseSettings):
     # Server settings
     host: str = "0.0.0.0"
     port: int = 9000
-    server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:9000")
+    server_url: AnyHttpUrl = AnyHttpUrl("https://rtlm.info:9000")
 
     # Authorization Server settings
-    auth_server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:9001")
-    auth_server_introspection_endpoint: str = "http://localhost:9001/introspect"
+    auth_server_url: AnyHttpUrl = AnyHttpUrl("https://rtlm.info:9001")
+    auth_server_introspection_endpoint: str = "https://rtlm.info:9001/introspect"
 
     # MCP settings
     mcp_scope: str = "user"
@@ -159,6 +159,12 @@ def create_resource_server(settings: ResourceServerSettings) -> FastMCP:
             "formatted": now.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
+    # Add health check endpoint to the FastMCP app
+    @app.get("/health")
+    async def health_check():
+        """Health check endpoint."""
+        return {"status": "healthy", "service": "mcp-weather-resource-server"}
+
     return app
 
 
@@ -195,7 +201,7 @@ def main(port: int, auth_server: str, transport: Literal["sse", "streamable-http
 
         # Create settings
         host = "0.0.0.0"
-        server_url = f"http://{host}:{port}"
+        server_url = f"https://rtlm.info:{port}"
         settings = ResourceServerSettings(
             host=host,
             port=port,
@@ -210,13 +216,42 @@ def main(port: int, auth_server: str, transport: Literal["sse", "streamable-http
         return 1
 
     try:
+        import os
+        
         mcp_server = create_resource_server(settings)
 
         logger.info(f"🚀 MCP Resource Server running on {settings.server_url}")
         logger.info(f"🔑 Using Authorization Server: {settings.auth_server_url}")
 
-        # Run the server - this should block and keep running
-        mcp_server.run(transport=transport)
+        # Check for SSL certificates
+        ssl_certfile = os.getenv("SSL_CERTFILE")
+        ssl_keyfile = os.getenv("SSL_KEYFILE")
+        
+        if ssl_certfile and ssl_keyfile:
+            logger.info(f"🔒 SSL enabled with cert: {ssl_certfile}")
+            
+            # For SSL support with FastMCP, we need to use uvicorn directly
+            if transport == "streamable-http":
+                import uvicorn
+                
+                # Get the streamable HTTP app from FastMCP
+                app_instance = mcp_server.streamable_http_app()
+                
+                uvicorn.run(
+                    app_instance,
+                    host=settings.host,
+                    port=settings.port,
+                    ssl_certfile=ssl_certfile,
+                    ssl_keyfile=ssl_keyfile,
+                    log_level="info"
+                )
+            else:
+                # For other transports, run normally (SSL not supported)
+                mcp_server.run(transport=transport)
+        else:
+            # Run the server normally without SSL
+            mcp_server.run(transport=transport)
+            
         logger.info("Server stopped")
         return 0
     except Exception:
