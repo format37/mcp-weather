@@ -80,11 +80,11 @@ class ResourceServerSettings(BaseSettings):
     # Server settings
     host: str = "0.0.0.0"
     port: int = 9000
-    server_url: AnyHttpUrl = AnyHttpUrl("https://rtlm.info:9000")
+    server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:9000")
 
     # Authorization Server settings
-    auth_server_url: AnyHttpUrl = AnyHttpUrl("https://rtlm.info:9001")
-    auth_server_introspection_endpoint: str = "https://rtlm.info:9001/introspect"
+    auth_server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:9001")
+    auth_server_introspection_endpoint: str = "http://localhost:9001/introspect"
 
     # MCP settings
     mcp_scope: str = "user"
@@ -195,7 +195,7 @@ def main(port: int, auth_server: str, transport: Literal["sse", "streamable-http
 
         # Create settings
         host = "0.0.0.0"
-        server_url = f"https://rtlm.info:{port}"
+        server_url = f"http://{host}:{port}"
         settings = ResourceServerSettings(
             host=host,
             port=port,
