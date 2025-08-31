@@ -167,7 +167,7 @@ def create_resource_server(settings: ResourceServerSettings) -> FastMCP:
 @click.option("--auth-server", default="http://localhost:9001", help="Authorization Server URL")
 @click.option(
     "--transport",
-    default="streamable-http",
+    default="sse",
     type=click.Choice(["sse", "streamable-http"]),
     help="Transport protocol to use ('sse' or 'streamable-http')",
 )
