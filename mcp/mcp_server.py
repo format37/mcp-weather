@@ -159,12 +159,6 @@ def create_resource_server(settings: ResourceServerSettings) -> FastMCP:
             "formatted": now.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
-    # Add health check endpoint to the FastMCP app
-    @app.get("/health")
-    async def health_check():
-        """Health check endpoint."""
-        return {"status": "healthy", "service": "mcp-weather-resource-server"}
-
     return app
 
 
@@ -233,12 +227,25 @@ def main(port: int, auth_server: str, transport: Literal["sse", "streamable-http
             # For SSL support with FastMCP, we need to use uvicorn directly
             if transport == "streamable-http":
                 import uvicorn
+                from starlette.applications import Starlette
+                from starlette.responses import JSONResponse
+                from starlette.routing import Route, Mount
                 
                 # Get the streamable HTTP app from FastMCP
-                app_instance = mcp_server.streamable_http_app()
+                mcp_app = mcp_server.streamable_http_app()
+                
+                # Create health check endpoint
+                async def health_check(request):
+                    return JSONResponse({"status": "healthy", "service": "mcp-weather-resource-server"})
+                
+                # Create main app with health check and MCP mount
+                main_app = Starlette(routes=[
+                    Route("/health", endpoint=health_check, methods=["GET"]),
+                    Mount("/", app=mcp_app),
+                ])
                 
                 uvicorn.run(
-                    app_instance,
+                    main_app,
                     host=settings.host,
                     port=settings.port,
                     ssl_certfile=ssl_certfile,
