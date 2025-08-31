@@ -35,8 +35,8 @@ class AuthServerSettings(BaseModel):
     # Server settings
     host: str = "0.0.0.0"
     port: int = 9001
-    server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:9001")
-    auth_callback_path: str = "http://localhost:9001/login/callback"
+    server_url: AnyHttpUrl = AnyHttpUrl("https://rtlm.info:9001")
+    auth_callback_path: str = "https://rtlm.info:9001/login/callback"
 
 
 class SimpleAuthProvider(SimpleOAuthProvider):
@@ -138,14 +138,27 @@ def create_authorization_server(server_settings: AuthServerSettings, auth_settin
 
 async def run_server(server_settings: AuthServerSettings, auth_settings: SimpleAuthSettings):
     """Run the Authorization Server."""
+    import os
+    
     auth_server = create_authorization_server(server_settings, auth_settings)
 
-    config = Config(
-        auth_server,
-        host=server_settings.host,
-        port=server_settings.port,
-        log_level="info",
-    )
+    config_kwargs = {
+        "app": auth_server,
+        "host": server_settings.host,
+        "port": server_settings.port,
+        "log_level": "info",
+    }
+
+    # Add SSL support if certificates are available
+    ssl_certfile = os.getenv("SSL_CERTFILE")
+    ssl_keyfile = os.getenv("SSL_KEYFILE")
+    
+    if ssl_certfile and ssl_keyfile:
+        config_kwargs["ssl_certfile"] = ssl_certfile
+        config_kwargs["ssl_keyfile"] = ssl_keyfile
+        logger.info(f"🔒 SSL enabled with cert: {ssl_certfile}")
+
+    config = Config(**config_kwargs)
     server = Server(config)
 
     logger.info(f"🚀 MCP Authorization Server running on {server_settings.server_url}")
@@ -170,7 +183,7 @@ def main(port: int) -> int:
 
     # Create server settings
     host = "0.0.0.0"
-    server_url = f"http://{host}:{port}"
+    server_url = f"https://rtlm.info:{port}"
     server_settings = AuthServerSettings(
         host=host,
         port=port,
