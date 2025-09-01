@@ -22,7 +22,7 @@ def current_temperature(lat: float, lon: float) -> dict:
 # Mount using Host-based routing
 app = Starlette(
     routes=[
-        Host("mcp.acme.corp", app=mcp.streamable_http_app()),
+        Host("rtlm.info", app=mcp.streamable_http_app()),
     ]
 )
 
