@@ -1,4 +1,5 @@
 import os
+import contextlib
 from starlette.applications import Starlette
 from starlette.routing import Host
 from mcp.server.fastmcp import FastMCP
@@ -19,11 +20,18 @@ def current_temperature(lat: float, lon: float) -> dict:
     r = requests.get(url).json()
     return {"temperature": r["hourly"]["temperature_2m"][0]}
 
-# Mount using Host-based routing
+# Create a lifespan to manage the session manager
+@contextlib.asynccontextmanager
+async def lifespan(app: Starlette):
+    async with mcp.session_manager.run():
+        yield
+
+# Mount using Host-based routing with lifespan management
 app = Starlette(
     routes=[
         Host("rtlm.info", app=mcp.streamable_http_app()),
-    ]
+    ],
+    lifespan=lifespan,
 )
 
 def main():
