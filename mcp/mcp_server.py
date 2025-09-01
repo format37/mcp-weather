@@ -1,12 +1,8 @@
 import os
-# import shutil
-# import glob
-from fastapi import FastAPI, HTTPException, Request
+from starlette.applications import Starlette
+from starlette.routing import Host
 from mcp.server.fastmcp import FastMCP
-# import traceback
 import logging
-# import uuid
-# import asyncio
 import uvicorn
 import requests
 
@@ -23,64 +19,12 @@ def current_temperature(lat: float, lon: float) -> dict:
     r = requests.get(url).json()
     return {"temperature": r["hourly"]["temperature_2m"][0]}
 
-app = FastAPI()
-
-@app.get("/test")
-async def test_endpoint():
-    """
-    Test endpoint to verify the server is running.
-    
-    Returns:
-        dict: A simple response indicating the server status.
-    """
-    return {
-        "status": "ok",
-        "message": "YouTube MCP server is running",
-        "endpoints": {
-            "transcribe": "/transcribe_youtube (MCP tool)",
-            "test": "/test"
-        }
-    }
-
-# @app.on_event("startup")
-# async def startup_event():
-#     """Clean up data folder on server start"""
-#     pass
-
-# @app.middleware("http")
-# async def validate_api_key(request: Request, call_next):
-#     auth_header = request.headers.get("Authorization")
-#     API_KEY = os.environ.get("MCP_KEY")
-#     if auth_header != API_KEY:
-#         raise HTTPException(status_code=401, detail="Invalid API key")
-#     return await call_next(request)
-
-def asgi_sse_wrapper(original_asgi_app):
-    async def wrapped_asgi_app(scope, receive, send):
-        has_sent_initial_start = False
-        
-        async def _wrapped_send(message):
-            nonlocal has_sent_initial_start
-            message_type = message['type']
-
-            if message_type == 'http.response.start':
-                if not has_sent_initial_start:
-                    has_sent_initial_start = True
-                    await send(message)  # Allow the first start message
-                else:
-                    # Drop subsequent, erroneous start messages
-                    pass
-            elif message_type == 'http.response.body':
-                # Pass through body messages containing SSE data
-                await send(message)
-            else:
-                # Pass through other message types
-                await send(message)
-        
-        await original_asgi_app(scope, receive, _wrapped_send)
-    return wrapped_asgi_app
-
-app.mount("/", asgi_sse_wrapper(mcp.sse_app()))
+# Mount using Host-based routing
+app = Starlette(
+    routes=[
+        Host("mcp.acme.corp", app=mcp.streamable_http_app()),
+    ]
+)
 
 def main():
     """
