@@ -16,26 +16,7 @@ logger = logging.getLogger(__name__)
 # Initialize FastMCP server
 mcp = FastMCP("weather")
 
-# @mcp.tool()
-# async def get_youtube_metadata(url: str) -> dict:
-#     """
-#     Extract the label (title) and description of a YouTube video given its URL.
-
-#     Args:
-#         url (str): The URL of the YouTube video.
-
-#     Returns:
-#         dict: A dictionary with 'label' (title) and 'description' of the video.
-#     """
-#     try:
-#         with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
-#             info = ydl.extract_info(url, download=False)
-#             label = info.get("title", "")
-#             description = info.get("description", "")
-#             return {"label": label, "description": description}
-#     except Exception as e:
-#         logger.error(f"Error extracting metadata: {e}")
-#         return {"error": str(e)}
+@mcp.tool()
 def current_temperature(lat: float, lon: float) -> dict:
     """Get current temperature from Open-Meteo API."""
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m"
