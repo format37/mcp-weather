@@ -1,270 +1,126 @@
-import datetime
+import os
+# import shutil
+# import glob
+from fastapi import FastAPI, HTTPException, Request
+from mcp.server.fastmcp import FastMCP
+# import traceback
 import logging
-from typing import Any, Literal
-
-import click
+# import uuid
+# import asyncio
+import uvicorn
 import requests
-from pydantic import AnyHttpUrl
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from mcp.server.auth.settings import AuthSettings
-from mcp.server.fastmcp.server import FastMCP
-from mcp.server.auth.provider import AccessToken, TokenVerifier
-
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Initialize FastMCP server
+mcp = FastMCP("weather")
 
-class IntrospectionTokenVerifier(TokenVerifier):
-    """Token verifier that uses OAuth 2.0 Token Introspection (RFC 7662)."""
+# @mcp.tool()
+# async def get_youtube_metadata(url: str) -> dict:
+#     """
+#     Extract the label (title) and description of a YouTube video given its URL.
 
-    def __init__(
-        self,
-        introspection_endpoint: str,
-        server_url: str,
-        validate_resource: bool = False,
-    ):
-        self.introspection_endpoint = introspection_endpoint
-        self.server_url = server_url
-        self.validate_resource = validate_resource
+#     Args:
+#         url (str): The URL of the YouTube video.
 
-    async def verify_token(self, token: str) -> AccessToken | None:
-        """Verify token via introspection endpoint."""
-        import httpx
-
-        # Validate URL to prevent SSRF attacks
-        if not self.introspection_endpoint.startswith(("https://", "http://localhost", "http://127.0.0.1")):
-            logger.warning(f"Rejecting introspection endpoint with unsafe scheme: {self.introspection_endpoint}")
-            return None
-
-        # Configure secure HTTP client
-        timeout = httpx.Timeout(10.0, connect=5.0)
-        limits = httpx.Limits(max_connections=10, max_keepalive_connections=5)
-
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            limits=limits,
-            verify=True,  # Enforce SSL verification
-        ) as client:
-            try:
-                response = await client.post(
-                    self.introspection_endpoint,
-                    data={"token": token},
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                )
-
-                if response.status_code != 200:
-                    logger.debug(f"Token introspection returned status {response.status_code}")
-                    return None
-
-                data = response.json()
-                if not data.get("active", False):
-                    return None
-
-                return AccessToken(
-                    token=token,
-                    client_id=data.get("client_id", "unknown"),
-                    scopes=data.get("scope", "").split() if data.get("scope") else [],
-                    expires_at=data.get("exp"),
-                    resource=data.get("aud"),
-                )
-            except Exception as e:
-                logger.warning(f"Token introspection failed: {e}")
-                return None
-
-
-class ResourceServerSettings(BaseSettings):
-    """Settings for the MCP Resource Server."""
-
-    model_config = SettingsConfigDict(env_prefix="MCP_RESOURCE_")
-
-    # Server settings
-    host: str = "0.0.0.0"
-    port: int = 9000
-    server_url: AnyHttpUrl = AnyHttpUrl("https://rtlm.info:9000")
-
-    # Authorization Server settings
-    auth_server_url: AnyHttpUrl = AnyHttpUrl("https://rtlm.info:9001")
-    auth_server_introspection_endpoint: str = "https://rtlm.info:9001/introspect"
-
-    # MCP settings
-    mcp_scope: str = "user"
-
-    # RFC 8707 resource validation
-    oauth_strict: bool = False
-
-def current_temperature(lat: float, lon: float):
+#     Returns:
+#         dict: A dictionary with 'label' (title) and 'description' of the video.
+#     """
+#     try:
+#         with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+#             info = ydl.extract_info(url, download=False)
+#             label = info.get("title", "")
+#             description = info.get("description", "")
+#             return {"label": label, "description": description}
+#     except Exception as e:
+#         logger.error(f"Error extracting metadata: {e}")
+#         return {"error": str(e)}
+def current_temperature(lat: float, lon: float) -> dict:
     """Get current temperature from Open-Meteo API."""
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m"
     r = requests.get(url).json()
-    return r["hourly"]["temperature_2m"][0]
+    return {"temperature": r["hourly"]["temperature_2m"][0]}
 
+app = FastAPI()
 
-def create_resource_server(settings: ResourceServerSettings) -> FastMCP:
+@app.get("/test")
+async def test_endpoint():
     """
-    Create MCP Resource Server with token introspection.
-
-    This server:
-    1. Provides protected resource metadata (RFC 9728)
-    2. Validates tokens via Authorization Server introspection
-    3. Serves MCP tools and resources
+    Test endpoint to verify the server is running.
+    
+    Returns:
+        dict: A simple response indicating the server status.
     """
-    # Create token verifier for introspection
-    token_verifier = IntrospectionTokenVerifier(
-        introspection_endpoint=settings.auth_server_introspection_endpoint,
-        server_url=str(settings.server_url),
-        validate_resource=settings.oauth_strict,
-    )
-
-    # Create FastMCP server as a Resource Server
-    app = FastMCP(
-        name="Weather MCP Resource Server",
-        instructions="Resource Server that validates tokens via Authorization Server introspection",
-        host=settings.host,
-        port=settings.port,
-        debug=True,
-        # Auth configuration for RS mode
-        token_verifier=token_verifier,
-        auth=AuthSettings(
-            issuer_url=settings.auth_server_url,
-            required_scopes=[settings.mcp_scope],
-            resource_server_url=settings.server_url,
-        ),
-    )
-
-    @app.tool()
-    async def get_current_temperature(lat: float, lon: float) -> float:
-        """
-        Fetches the current temperature at the given latitude and longitude.
-        
-        This tool demonstrates weather data access protected by OAuth authentication.
-        User must be authenticated to access it.
-        """
-        logger.info(f"Fetching temperature for lat={lat}, lon={lon}")
-        return current_temperature(lat, lon)
-
-    @app.tool()
-    async def get_time() -> dict[str, Any]:
-        """
-        Get the current server time.
-
-        This tool demonstrates that system information can be protected
-        by OAuth authentication. User must be authenticated to access it.
-        """
-        now = datetime.datetime.now()
-
-        return {
-            "current_time": now.isoformat(),
-            "timezone": "UTC",
-            "timestamp": now.timestamp(),
-            "formatted": now.strftime("%Y-%m-%d %H:%M:%S"),
+    return {
+        "status": "ok",
+        "message": "YouTube MCP server is running",
+        "endpoints": {
+            "transcribe": "/transcribe_youtube (MCP tool)",
+            "test": "/test"
         }
+    }
 
-    return app
+# @app.on_event("startup")
+# async def startup_event():
+#     """Clean up data folder on server start"""
+#     pass
 
+# @app.middleware("http")
+# async def validate_api_key(request: Request, call_next):
+#     auth_header = request.headers.get("Authorization")
+#     API_KEY = os.environ.get("MCP_KEY")
+#     if auth_header != API_KEY:
+#         raise HTTPException(status_code=401, detail="Invalid API key")
+#     return await call_next(request)
 
-@click.command()
-@click.option("--port", default=9000, help="Port to listen on")
-@click.option("--auth-server", default="http://localhost:9001", help="Authorization Server URL")
-@click.option(
-    "--transport",
-    default="sse",
-    type=click.Choice(["sse", "streamable-http"]),
-    help="Transport protocol to use ('sse' or 'streamable-http')",
-)
-@click.option(
-    "--oauth-strict",
-    is_flag=True,
-    help="Enable RFC 8707 resource validation",
-)
-def main(port: int, auth_server: str, transport: Literal["sse", "streamable-http"], oauth_strict: bool) -> int:
-    """
-    Run the MCP Resource Server.
-
-    This server:
-    - Provides RFC 9728 Protected Resource Metadata
-    - Validates tokens via Authorization Server introspection
-    - Serves MCP tools requiring authentication
-
-    Must be used with a running Authorization Server.
-    """
-    logging.basicConfig(level=logging.INFO)
-
-    try:
-        # Parse auth server URL
-        auth_server_url = AnyHttpUrl(auth_server)
-
-        # Create settings
-        host = "0.0.0.0"
-        server_url = f"https://rtlm.info:{port}"
-        settings = ResourceServerSettings(
-            host=host,
-            port=port,
-            server_url=AnyHttpUrl(server_url),
-            auth_server_url=auth_server_url,
-            auth_server_introspection_endpoint=f"{auth_server}/introspect",
-            oauth_strict=oauth_strict,
-        )
-    except ValueError as e:
-        logger.error(f"Configuration error: {e}")
-        logger.error("Make sure to provide a valid Authorization Server URL")
-        return 1
-
-    try:
-        import os
+def asgi_sse_wrapper(original_asgi_app):
+    async def wrapped_asgi_app(scope, receive, send):
+        has_sent_initial_start = False
         
-        mcp_server = create_resource_server(settings)
+        async def _wrapped_send(message):
+            nonlocal has_sent_initial_start
+            message_type = message['type']
 
-        logger.info(f"🚀 MCP Resource Server running on {settings.server_url}")
-        logger.info(f"🔑 Using Authorization Server: {settings.auth_server_url}")
-
-        # Check for SSL certificates
-        ssl_certfile = os.getenv("SSL_CERTFILE")
-        ssl_keyfile = os.getenv("SSL_KEYFILE")
-        
-        if ssl_certfile and ssl_keyfile:
-            logger.info(f"🔒 SSL enabled with cert: {ssl_certfile}")
-            
-            # For SSL support with FastMCP, we need to use uvicorn directly
-            if transport == "streamable-http":
-                import uvicorn
-                from starlette.applications import Starlette
-                from starlette.responses import JSONResponse
-                from starlette.routing import Route, Mount
-                
-                # Get the streamable HTTP app from FastMCP
-                mcp_app = mcp_server.streamable_http_app()
-                
-                # Create health check endpoint
-                async def health_check(request):
-                    return JSONResponse({"status": "healthy", "service": "mcp-weather-resource-server"})
-                
-                # Create main app with health check and MCP mount
-                main_app = Starlette(routes=[
-                    Route("/health", endpoint=health_check, methods=["GET"]),
-                    Mount("/", app=mcp_app),
-                ])
-                
-                uvicorn.run(
-                    main_app,
-                    host=settings.host,
-                    port=settings.port,
-                    ssl_certfile=ssl_certfile,
-                    ssl_keyfile=ssl_keyfile,
-                    log_level="info"
-                )
+            if message_type == 'http.response.start':
+                if not has_sent_initial_start:
+                    has_sent_initial_start = True
+                    await send(message)  # Allow the first start message
+                else:
+                    # Drop subsequent, erroneous start messages
+                    pass
+            elif message_type == 'http.response.body':
+                # Pass through body messages containing SSE data
+                await send(message)
             else:
-                # For other transports, run normally (SSL not supported)
-                mcp_server.run(transport=transport)
-        else:
-            # Run the server normally without SSL
-            mcp_server.run(transport=transport)
-            
-        logger.info("Server stopped")
-        return 0
-    except Exception:
-        logger.exception("Server error")
-        return 1
+                # Pass through other message types
+                await send(message)
+        
+        await original_asgi_app(scope, receive, _wrapped_send)
+    return wrapped_asgi_app
 
+app.mount("/", asgi_sse_wrapper(mcp.sse_app()))
+
+def main():
+    """
+    Main function to run the uvicorn server
+    """
+    PORT = int(os.getenv("PORT", "5000"))
+    SSL_CERTFILE = os.getenv("SSL_CERTFILE", None)
+    SSL_KEYFILE = os.getenv("SSL_KEYFILE", None)
+
+    uvicorn_kwargs = {
+        "app": app,
+        "host": "0.0.0.0",
+        "port": PORT,
+        "log_level": "info"
+    }
+
+    if SSL_CERTFILE and SSL_KEYFILE:
+        uvicorn_kwargs["ssl_certfile"] = SSL_CERTFILE
+        uvicorn_kwargs["ssl_keyfile"] = SSL_KEYFILE
+
+    uvicorn.run(**uvicorn_kwargs)
 
 if __name__ == "__main__":
     main()
