@@ -3,27 +3,17 @@ import contextlib
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from mcp.server.fastmcp import FastMCP, Context
+from mcp.types import TextContent
+from mcp import SamplingMessage
 import logging
 import uvicorn
 import requests
-
-from pydantic_ai import Agent
-from pydantic_ai.models.mcp_sampling import MCPSamplingModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize FastMCP server
 mcp = FastMCP("weather")
-
-# Initialize Pydantic AI agent with MCP sampling support
-weather_agent = Agent(
-    system_prompt=(
-        'You are a weather assistant. You analyze weather data and provide helpful, '
-        'conversational responses about weather conditions. Always include the '
-        'temperature and any relevant context about the weather.'
-    )
-)
 
 @mcp.tool()
 def current_temperature(lat: float, lon: float) -> dict:
@@ -40,17 +30,25 @@ async def weather_assistant(ctx: Context, lat: float, lon: float, query: str = "
     response = requests.get(url)
     weather_data = response.json()
     
-    # Use the Pydantic AI agent with MCP sampling to analyze the weather
+    # Use MCP sampling to get AI analysis of the weather data
     prompt = f"""
     Analyze this weather data for location (lat: {lat}, lon: {lon}) and respond to: "{query}"
     
     Weather data: {weather_data}
     
     Please provide a helpful, conversational response about the weather conditions.
+    Include the temperature and any relevant context about the weather.
     """
     
-    result = await weather_agent.run(prompt, model=MCPSamplingModel(session=ctx.session))
-    return result.output
+    # Use ctx.session.create_message for MCP sampling
+    result = await ctx.session.create_message(
+        [SamplingMessage(role='user', content=TextContent(type='text', text=prompt))],
+        max_tokens=1024,
+        system_prompt='You are a weather assistant. You analyze weather data and provide helpful, conversational responses about weather conditions.',
+    )
+    
+    assert isinstance(result.content, TextContent)
+    return result.content.text
 
 # # Create a lifespan to manage the session manager
 # @contextlib.asynccontextmanager
