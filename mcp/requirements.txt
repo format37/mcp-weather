@@ -8,4 +8,5 @@ starlette>=0.28.0
 uvicorn==0.23.2
 fastapi==0.115.12
 mcp[cli]==1.8.0
-pydantic-ai-slim[mcp]>=0.0.49
+# pydantic-ai-slim[mcp]>=0.0.49
+pydantic-ai==1.0.0b1
