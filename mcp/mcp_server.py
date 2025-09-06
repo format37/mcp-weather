@@ -11,10 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from mcp.server.fastmcp import FastMCP, Context
-
-from pydantic_ai import Agent
-from pydantic_ai.models.mcp_sampling import MCPSamplingModel
+from mcp.server.fastmcp import FastMCP
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,14 +19,6 @@ logger = logging.getLogger(__name__)
 # Initialize FastMCP server
 mcp = FastMCP("weather")
 
-# Initialize Pydantic AI agent for weather analysis
-weather_agent = Agent(
-    system_prompt=(
-        'You are a weather assistant. You analyze weather data and provide helpful, '
-        'conversational responses about weather conditions. Always include the '
-        'temperature and any relevant context about the weather.'
-    )
-)
 
 @mcp.tool()
 def current_temperature(lat: float, lon: float) -> dict:
@@ -38,26 +27,7 @@ def current_temperature(lat: float, lon: float) -> dict:
     r = requests.get(url).json()
     return {"temperature": r["hourly"]["temperature_2m"][0]}
 
-@mcp.tool()
-async def weather_assistant(ctx: Context, lat: float, lon: float, query: str = "What's the weather like?") -> str:
-    """Get weather information with AI-powered analysis using Pydantic AI and MCP sampling."""
-    # Get raw weather data
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&hourly=temperature_2m&forecast_days=1"
-    response = requests.get(url)
-    weather_data = response.json()
-    
-    # Use Pydantic AI agent with MCP sampling to analyze the weather
-    prompt = f"""
-    Analyze this weather data for location (lat: {lat}, lon: {lon}) and respond to: "{query}"
-    
-    Weather data: {weather_data}
-    
-    Please provide a helpful, conversational response about the weather conditions.
-    """
-    
-    # Use MCPSamplingModel to proxy LLM calls through the client
-    result = await weather_agent.run(prompt, model=MCPSamplingModel(session=ctx.session))
-    return result.output
+## Removed the AI-based weather_assistant tool for a minimal example.
 
 def _parse_env_list(value: str | None) -> list[str]:
     if not value:
