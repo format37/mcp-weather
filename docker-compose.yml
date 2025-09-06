@@ -44,4 +44,24 @@ services:
     command: ["python", "complex_mcp_server.py", "--port=9000", "--auth-server=https://rtlm.info:9001", "--transport=streamable-http"]
     depends_on:
       - mcp-weather-auth
+  
+  web-server:
+    container_name: mcp-web-server
+    image: nginx:alpine
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    network_mode: host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/letsencrypt/live/rtlm.info/fullchain.pem:/server/fullchain.pem:ro
+      - /etc/letsencrypt/live/rtlm.info/privkey.pem:/server/privkey.pem:ro
+      - ./web-server/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./web-server/html:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    depends_on:
+      - mcp-weather
+      - mcp-weather-auth
     
