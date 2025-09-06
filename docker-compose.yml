@@ -40,6 +40,7 @@ services:
       - TZ=UTC
       - SSL_CERTFILE=/server/fullchain.pem
       - SSL_KEYFILE=/server/privkey.pem
+      - ALLOWED_ORIGINS=https://claude.ai
     # command: ["python", "mcp_server.py", "--port=9000", "--auth-server=https://rtlm.info:9001"]
     command: ["python", "mcp_server.py"]
     # depends_on:

@@ -1,4 +1,5 @@
 import os
+import contextlib
 import logging
 from typing import Iterable
 
@@ -134,8 +135,17 @@ class _RootToMcpForwarder:
         if path == "/":
             new_scope = dict(scope)
             new_scope["path"] = "/mcp"
+            if "raw_path" in new_scope:
+                new_scope["raw_path"] = b"/mcp"
             return await self.inner_app(new_scope, receive, send)
         return await self.inner_app(scope, receive, send)
+
+
+@contextlib.asynccontextmanager
+async def lifespan(_: Starlette):
+    # Ensure FastMCP session manager is running, as required by Streamable HTTP
+    async with mcp.session_manager.run():
+        yield
 
 
 app = Starlette(
@@ -145,7 +155,8 @@ app = Starlette(
         Mount("/mcp", app=mcp_asgi),
         # Compatibility: forward root '/' to '/mcp'
         Mount("/", app=_RootToMcpForwarder(mcp_asgi)),
-    ]
+    ],
+    lifespan=lifespan,
 )
 
 # Configure CORS and Origin validation per Streamable HTTP guidance
