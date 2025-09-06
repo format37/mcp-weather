@@ -4,9 +4,7 @@ import logging
 import uvicorn
 import requests
 from starlette.applications import Starlette
-from starlette.routing import Mount, Route
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.routing import Mount
 
 from mcp.server.fastmcp import FastMCP
 
@@ -25,10 +23,6 @@ def current_temperature(lat: float, lon: float) -> dict:
     return {"temperature": r["hourly"]["temperature_2m"][0]}
 
 
-async def health_check(_: Request) -> Response:
-    return JSONResponse({"status": "healthy", "service": "mcp-weather"})
-
-
 # Build the main ASGI app with Streamable HTTP mounted
 mcp_asgi = mcp.streamable_http_app()
 
@@ -40,10 +34,7 @@ async def lifespan(_: Starlette):
 
 app = Starlette(
     routes=[
-        Route("/health", endpoint=health_check, methods=["GET"]),
-        # Expose MCP at both '/' and '/mcp' for compatibility
         Mount("/", app=mcp_asgi),
-        Mount("/mcp", app=mcp_asgi),
     ],
     lifespan=lifespan,
 )
