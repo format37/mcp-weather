@@ -118,7 +118,7 @@ def main():
     logger.info(f"Starting Weather MCP server on port {PORT}")
     
     uvicorn_kwargs = {
-        "app": mcp.app,
+        "app": mcp,
         "host": os.getenv("HOST", "0.0.0.0"),  # bind address
         "port": PORT,
         "log_level": os.getenv("LOG_LEVEL", "info"),
@@ -140,4 +140,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
