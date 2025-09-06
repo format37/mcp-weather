@@ -1,25 +1,4 @@
 services:
-  # mcp-weather-auth:
-  #   container_name: mcp-weather-auth-server
-  #   build:
-  #     context: mcp
-  #     dockerfile: Dockerfile.auth
-  #   logging:
-  #     options:
-  #       max-size: "10m"
-  #       max-file: "3"
-  #   network_mode: host
-  #   volumes:
-  #     - /etc/localtime:/etc/localtime:ro
-  #     - /etc/timezone:/etc/timezone:ro
-  #     - /etc/letsencrypt/live/rtlm.info/fullchain.pem:/server/fullchain.pem:ro
-  #     - /etc/letsencrypt/live/rtlm.info/privkey.pem:/server/privkey.pem:ro
-  #   environment:
-  #     - TZ=UTC
-  #     - SSL_CERTFILE=/server/fullchain.pem
-  #     - SSL_KEYFILE=/server/privkey.pem
-  #   command: ["python", "-m", "mcp_simple_auth.auth_server", "--port=9001"]
-
   mcp-weather:
     container_name: mcp-weather-resource-server
     # restart: unless-stopped
