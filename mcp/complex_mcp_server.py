@@ -1,17 +1,39 @@
+import os
 import datetime
 import logging
-from typing import Any, Literal
+import contextlib
+from typing import Any, Iterable, Literal
 
 import click
 import requests
 from pydantic import AnyHttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route, Mount
+from starlette.middleware.cors import CORSMiddleware
+
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp.server import FastMCP
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 
 logger = logging.getLogger(__name__)
+
+# Optional suppression for benign MCP validation warnings
+_suppress = os.getenv("SUPPRESS_MCP_WARNINGS", "true").lower() in {"1", "true", "yes", "y"}
+if _suppress:
+    class _McpNoiseFilter(logging.Filter):
+        _prefixes = (
+            "Failed to validate request: Received request before initialization was complete",
+            "Failed to validate notification: RequestResponder must be used as a context manager",
+        )
+
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = str(record.getMessage())
+            return not any(msg.startswith(p) for p in self._prefixes)
+
+    logging.getLogger().addFilter(_McpNoiseFilter())
 
 
 class IntrospectionTokenVerifier(TokenVerifier):
@@ -92,6 +114,46 @@ class ResourceServerSettings(BaseSettings):
     # RFC 8707 resource validation
     oauth_strict: bool = False
 
+
+def _parse_env_list(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [v.strip() for v in value.split(",") if v.strip()]
+
+
+class OriginValidationMiddleware:
+    """
+    Strict Origin validation for Streamable HTTP per MCP spec.
+    """
+
+    def __init__(self, app: Starlette, allowed_origins: Iterable[str], allow_no_origin: bool = True):
+        self.app = app
+        self.allowed = set(allowed_origins)
+        self.allow_no_origin = allow_no_origin
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        method = scope.get("method", "GET").upper()
+        if method == "OPTIONS":  # let CORS middleware handle preflight
+            return await self.app(scope, receive, send)
+
+        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        origin = headers.get("origin")
+
+        if origin is None:
+            if not self.allow_no_origin:
+                res = JSONResponse({"error": "Origin required"}, status_code=403)
+                return await res(scope, receive, send)
+            return await self.app(scope, receive, send)
+
+        if origin not in self.allowed:
+            res = JSONResponse({"error": "Origin not allowed"}, status_code=403)
+            return await res(scope, receive, send)
+
+        return await self.app(scope, receive, send)
+
 def current_temperature(lat: float, lon: float):
     """Get current temperature from Open-Meteo API."""
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m"
@@ -122,6 +184,7 @@ def create_resource_server(settings: ResourceServerSettings) -> FastMCP:
         host=settings.host,
         port=settings.port,
         debug=True,
+        streamable_http_path="/",  # mount at root of any Starlette mount
         # Auth configuration for RS mode
         token_verifier=token_verifier,
         auth=AuthSettings(
@@ -210,8 +273,6 @@ def main(port: int, auth_server: str, transport: Literal["sse", "streamable-http
         return 1
 
     try:
-        import os
-        
         mcp_server = create_resource_server(settings)
 
         logger.info(f"🚀 MCP Resource Server running on {settings.server_url}")
@@ -223,40 +284,61 @@ def main(port: int, auth_server: str, transport: Literal["sse", "streamable-http
         
         if ssl_certfile and ssl_keyfile:
             logger.info(f"🔒 SSL enabled with cert: {ssl_certfile}")
-            
-            # For SSL support with FastMCP, we need to use uvicorn directly
+
             if transport == "streamable-http":
                 import uvicorn
-                from starlette.applications import Starlette
-                from starlette.responses import JSONResponse
-                from starlette.routing import Route, Mount
-                
+
                 # Get the streamable HTTP app from FastMCP
                 mcp_app = mcp_server.streamable_http_app()
-                
-                # Create health check endpoint
+
+                # Health endpoint
                 async def health_check(request):
                     return JSONResponse({"status": "healthy", "service": "mcp-weather-resource-server"})
-                
-                # Create main app with health check and MCP mount
-                main_app = Starlette(routes=[
-                    Route("/health", endpoint=health_check, methods=["GET"]),
-                    Mount("/", app=mcp_app),
-                ])
-                
+
+                # Starlette lifespan to run session manager
+                @contextlib.asynccontextmanager
+                async def lifespan(_: Starlette):
+                    async with mcp_server.session_manager.run():
+                        yield
+
+                # Main app mounting MCP at both '/' and '/mcp'
+                main_app = Starlette(
+                    routes=[
+                        Route("/health", endpoint=health_check, methods=["GET"]),
+                        Mount("/", app=mcp_app),
+                        Mount("/mcp", app=mcp_app),
+                    ],
+                    lifespan=lifespan,
+                )
+
+                # CORS and Origin validation
+                allowed_origins = _parse_env_list(os.getenv("ALLOWED_ORIGINS"))
+                allow_no_origin = os.getenv("ALLOW_NO_ORIGIN", "true").lower() in {"1", "true", "yes", "y"}
+                if allowed_origins:
+                    main_app.add_middleware(
+                        CORSMiddleware,
+                        allow_origins=allowed_origins,
+                        allow_methods=["GET", "POST", "DELETE"],
+                        allow_headers=["*"],
+                        expose_headers=["Mcp-Session-Id"],
+                        allow_credentials=False,
+                        max_age=600,
+                    )
+                main_app.add_middleware(
+                    OriginValidationMiddleware, allowed_origins=allowed_origins, allow_no_origin=allow_no_origin
+                )
+
                 uvicorn.run(
                     main_app,
                     host=settings.host,
                     port=settings.port,
                     ssl_certfile=ssl_certfile,
                     ssl_keyfile=ssl_keyfile,
-                    log_level="info"
+                    log_level="info",
                 )
             else:
-                # For other transports, run normally (SSL not supported)
                 mcp_server.run(transport=transport)
         else:
-            # Run the server normally without SSL
             mcp_server.run(transport=transport)
             
         logger.info("Server stopped")
