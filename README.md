@@ -3,7 +3,7 @@ A simple weather MCP example, that using Docker, OAuth, Python, SSL
 * Input: lat, lon
 * Output: temperature
 # Requirements
-It should be hosted on 443 port with ssl cert
+Unlike Claude Desktop, Claude web requires MCP to be hosted on port 443 with an SSL certificate
 # Installation
 ```
 git clone https://github.com/format37/mcp-weather.git
