@@ -41,7 +41,8 @@ services:
       - SSL_CERTFILE=/server/fullchain.pem
       - SSL_KEYFILE=/server/privkey.pem
       - ALLOWED_ORIGINS=https://claude.ai
-    command: ["python", "complex_mcp_server.py", "--port=443", "--auth-server=https://rtlm.info:9001", "--transport=streamable-http"]
+    # command: ["python", "complex_mcp_server.py", "--port=443", "--auth-server=https://rtlm.info:9001", "--transport=streamable-http"]
+    command: ["python", "mcp_server.py", "--port=443", "--transport=streamable-http"]
     depends_on:
       - mcp-weather-auth
   
