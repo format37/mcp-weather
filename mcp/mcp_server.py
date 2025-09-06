@@ -35,7 +35,11 @@ async def health_check(_: Request) -> Response:
 # Build the main ASGI app with Streamable HTTP mounted
 mcp_asgi = mcp.streamable_http_app()
 
-lifespan = mcp.session_manager.lifespan()
+@contextlib.asynccontextmanager
+async def lifespan(_: Starlette):
+    # Ensure FastMCP session manager is running, as required by Streamable HTTP
+    async with mcp.session_manager.run():
+        yield
 
 app = Starlette(
     routes=[
