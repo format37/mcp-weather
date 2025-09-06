@@ -38,51 +38,44 @@ async def test_current_temperature():
             return json.loads(result.content[0].text)
 
 
-async def test_weather_assistant_with_sampling():
-    """Test the weather_assistant tool that uses MCP sampling"""
-    print("\nTesting weather_assistant tool with MCP sampling...")
+async def test_weather_assistant_with_pydantic_ai():
+    """Test the weather_assistant tool using Pydantic AI with MCP sampling"""
+    print("\nTesting weather_assistant tool with Pydantic AI MCP sampling...")
     
     try:
-        from mcp.types import CreateMessageRequestParams, CreateMessageResult, TextContent
-        from mcp.shared.context import RequestContext
-        from mcp.client.session import ClientSession
-        from typing import Any
+        from pydantic_ai import Agent
+        from pydantic_ai.mcp import MCPServerStdio
         
-        # Define a simple sampling callback for testing
-        async def sampling_callback(
-            context: RequestContext[ClientSession, Any], 
-            params: CreateMessageRequestParams
-        ) -> CreateMessageResult:
-            # Mock LLM response for testing
-            weather_response = f"Based on the weather data provided, the current conditions show moderate temperatures. {params.messages[0].content.text[:100]}..."
-            return CreateMessageResult(
-                role='assistant',
-                content=TextContent(type='text', text=weather_response),
-                model='test-model',
-            )
-        
-        server_params = StdioServerParameters(
+        # Create MCP server connection
+        server = MCPServerStdio(
             command='python',
             args=['mcp/mcp_server.py'],
             env={'PORT': '9000'}
         )
         
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write, sampling_callback=sampling_callback) as session:
-                await session.initialize()
-                
-                # Test the weather assistant tool with sampling
-                result = await session.call_tool('weather_assistant', {
-                    'lat': 40.7128,  # New York City
-                    'lon': -74.0060,
-                    'query': 'Should I wear a jacket today?'
-                })
-                
-                print(f"Weather assistant result: {result.content[0].text}")
-                return result.content[0].text
-                
+        # Create a Pydantic AI agent that will act as the MCP client
+        client_agent = Agent('test', toolsets=[server])
+        
+        async with client_agent:
+            # Enable MCP sampling model - this allows the server's pydantic_ai agent 
+            # to make LLM calls through this client agent
+            client_agent.set_mcp_sampling_model()
+            
+            # Test the weather assistant tool
+            result = await client_agent.run(
+                'Get weather information for New York City (lat: 40.7128, lon: -74.0060) '
+                'and tell me if I should wear a jacket today'
+            )
+            print(f"Weather assistant result: {result.output}")
+            
+        return result.output
+        
+    except ImportError as e:
+        print(f"Pydantic AI not available for testing: {e}")
+        print("Install with: pip install pydantic-ai==1.0.0b1")
+        return None
     except Exception as e:
-        print(f"Error testing weather_assistant with sampling: {e}")
+        print(f"Error testing weather_assistant with Pydantic AI: {e}")
         return None
 
 
@@ -95,7 +88,7 @@ async def test_mcp_server_tools():
     temp_result = await test_current_temperature()
     
     # Test AI-powered weather assistant
-    assistant_result = await test_weather_assistant_with_sampling()
+    assistant_result = await test_weather_assistant_with_pydantic_ai()
     
     print("\n" + "=" * 50)
     print("Test Summary:")
