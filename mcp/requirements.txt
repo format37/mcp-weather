@@ -6,5 +6,5 @@ pydantic-settings>=2.5.2
 requests>=2.32.5
 starlette>=0.28.0
 uvicorn>=0.31.1
-fastapi==0.115.12
-pydantic-ai==1.0.0b1
+# fastapi not required for this example
+# pydantic-ai not required (removed weather_assistant)

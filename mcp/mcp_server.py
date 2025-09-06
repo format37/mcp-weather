@@ -16,8 +16,23 @@ from mcp.server.fastmcp import FastMCP
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastMCP server
-mcp = FastMCP("weather")
+# Optionally suppress noisy library warnings that are benign during normal MCP flows
+_suppress = os.getenv("SUPPRESS_MCP_WARNINGS", "true").lower() in {"1", "true", "yes", "y"}
+if _suppress:
+    class _McpNoiseFilter(logging.Filter):
+        _prefixes = (
+            "Failed to validate request: Received request before initialization was complete",
+            "Failed to validate notification: RequestResponder must be used as a context manager",
+        )
+
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = str(record.getMessage())
+            return not any(msg.startswith(p) for p in self._prefixes)
+
+    logging.getLogger().addFilter(_McpNoiseFilter())
+
+# Initialize FastMCP server and expose Streamable HTTP at mount root
+mcp = FastMCP("weather", streamable_http_path="/")
 
 
 @mcp.tool()
@@ -82,33 +97,8 @@ async def health_check(_: Request) -> Response:
     return JSONResponse({"status": "healthy", "service": "mcp-weather"})
 
 
-# Build the main ASGI app with Streamable HTTP mounted at '/'
+# Build the main ASGI app with Streamable HTTP mounted
 mcp_asgi = mcp.streamable_http_app()
-
-
-class _RootToMcpForwarder:
-    """Forward '/' requests to '/mcp' for compatibility with clients.
-
-    Some clients POST/GET the MCP endpoint at '/', while others expect '/mcp'.
-    This ASGI app rewrites the incoming path to '/mcp' and delegates to the
-    underlying MCP ASGI app.
-    """
-
-    def __init__(self, inner_app):
-        self.inner_app = inner_app
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") != "http":
-            return await self.inner_app(scope, receive, send)
-        # Only rewrite exact root path; leave other paths untouched
-        path = scope.get("path", "/")
-        if path == "/":
-            new_scope = dict(scope)
-            new_scope["path"] = "/mcp"
-            if "raw_path" in new_scope:
-                new_scope["raw_path"] = b"/mcp"
-            return await self.inner_app(new_scope, receive, send)
-        return await self.inner_app(scope, receive, send)
 
 
 @contextlib.asynccontextmanager
@@ -121,10 +111,9 @@ async def lifespan(_: Starlette):
 app = Starlette(
     routes=[
         Route("/health", endpoint=health_check, methods=["GET"]),
-        # Native MCP mount at '/mcp'
+        # Expose MCP at both '/' and '/mcp' for compatibility
+        Mount("/", app=mcp_asgi),
         Mount("/mcp", app=mcp_asgi),
-        # Compatibility: forward root '/' to '/mcp'
-        Mount("/", app=_RootToMcpForwarder(mcp_asgi)),
     ],
     lifespan=lifespan,
 )
@@ -141,16 +130,8 @@ if ALLOWED_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=ALLOWED_ORIGINS,
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=[
-            "Accept",
-            "Content-Type",
-            "Authorization",
-            "Mcp-Session-Id",
-            "Last-Event-ID",
-            "Origin",
-            "User-Agent",
-        ],
+        allow_methods=["GET", "POST", "DELETE"],  # OPTIONS handled automatically
+        allow_headers=["*"],  # Allow any requested header from Claude Web
         expose_headers=["Mcp-Session-Id"],
         allow_credentials=False,
         max_age=600,
