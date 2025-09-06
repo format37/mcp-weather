@@ -137,3 +137,7 @@ def main():
         logger.warning("To enable HTTPS, provide SSL_CERTFILE and SSL_KEYFILE environment variables")
 
     uvicorn.run(**uvicorn_kwargs)
+
+if __name__ == "__main__":
+    main()
+    
