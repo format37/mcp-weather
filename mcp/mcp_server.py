@@ -1,6 +1,6 @@
-# import os
+import os
 # import contextlib
-# import logging
+import logging
 # import uvicorn
 import requests
 # from starlette.applications import Starlette
@@ -10,8 +10,8 @@ import requests
 
 # from mcp.server.fastmcp import FastMCP
 
-# logging.basicConfig(level=logging.INFO)
-# logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # # Initialize FastMCP server and expose Streamable HTTP at mount root
 # mcp = FastMCP("weather", streamable_http_path="/")
@@ -105,5 +105,30 @@ def current_temperature(lat: float, lon: float) -> dict:
 
 
 # Run server with streamable_http transport
+# if __name__ == "__main__":
+#     mcp.run(transport="streamable-http")
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    # Get configuration from environment variables
+    PORT = int(os.getenv("PORT", "443"))
+    SSL_CERTFILE = os.getenv("SSL_CERTFILE", "/server/fullchain.pem")
+    SSL_KEYFILE = os.getenv("SSL_KEYFILE", "/server/privkey.pem")
+    
+    # Check if SSL certificates exist
+    ssl_kwargs = {}
+    if os.path.exists(SSL_CERTFILE) and os.path.exists(SSL_KEYFILE):
+        ssl_kwargs = {
+            "ssl_certfile": SSL_CERTFILE,
+            "ssl_keyfile": SSL_KEYFILE
+        }
+        logger.info(f"HTTPS enabled with certificates: cert={SSL_CERTFILE}, key={SSL_KEYFILE}")
+    else:
+        logger.warning("SSL certificates not found. Running with HTTP only.")
+        logger.warning(f"Expected cert: {SSL_CERTFILE}")
+        logger.warning(f"Expected key: {SSL_KEYFILE}")
+    
+    mcp.run(
+        transport="streamable-http",
+        port=PORT,
+        host="0.0.0.0",
+        **ssl_kwargs
+    )
