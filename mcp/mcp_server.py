@@ -129,6 +129,6 @@ if __name__ == "__main__":
     mcp.run(
         transport="streamable-http",
         # port=PORT,
-        host="0.0.0.0",
+        # host="0.0.0.0",
         **ssl_kwargs
     )
