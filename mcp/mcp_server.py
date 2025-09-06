@@ -114,10 +114,37 @@ async def health_check(_: Request) -> Response:
 # Build the main ASGI app with Streamable HTTP mounted at '/'
 mcp_asgi = mcp.streamable_http_app()
 
+
+class _RootToMcpForwarder:
+    """Forward '/' requests to '/mcp' for compatibility with clients.
+
+    Some clients POST/GET the MCP endpoint at '/', while others expect '/mcp'.
+    This ASGI app rewrites the incoming path to '/mcp' and delegates to the
+    underlying MCP ASGI app.
+    """
+
+    def __init__(self, inner_app):
+        self.inner_app = inner_app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.inner_app(scope, receive, send)
+        # Only rewrite exact root path; leave other paths untouched
+        path = scope.get("path", "/")
+        if path == "/":
+            new_scope = dict(scope)
+            new_scope["path"] = "/mcp"
+            return await self.inner_app(new_scope, receive, send)
+        return await self.inner_app(scope, receive, send)
+
+
 app = Starlette(
     routes=[
         Route("/health", endpoint=health_check, methods=["GET"]),
-        Mount("/", app=mcp_asgi),
+        # Native MCP mount at '/mcp'
+        Mount("/mcp", app=mcp_asgi),
+        # Compatibility: forward root '/' to '/mcp'
+        Mount("/", app=_RootToMcpForwarder(mcp_asgi)),
     ]
 )
 
