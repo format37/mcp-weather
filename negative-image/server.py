@@ -40,26 +40,26 @@ def negative_image(image_url: str) -> MCPImage:
     return to_mcp_image(neg, format="jpeg")
 
 
-@mcp.tool()
-async def negative_image_from_resource(ctx: Context, resource_uri: str) -> MCPImage:
-    """Generate a negative image from a client-provided resource URI.
+# @mcp.tool()
+# async def negative_image_from_resource(ctx: Context, resource_uri: str) -> MCPImage:
+#     """Generate a negative image from a client-provided resource URI.
 
-    Pass a resource URI exposed by the MCP client (e.g., an attached file).
-    The server streams the bytes via the MCP session, inverts the image,
-    and returns the result as JPEG.
-    """
-    # Read binary data from the client-managed resource
-    await ctx.debug(f"Reading resource: {resource_uri}")
-    data: bytes = await ctx.read_resource(resource_uri)
+#     Pass a resource URI exposed by the MCP client (e.g., an attached file).
+#     The server streams the bytes via the MCP session, inverts the image,
+#     and returns the result as JPEG.
+#     """
+#     # Read binary data from the client-managed resource
+#     await ctx.debug(f"Reading resource: {resource_uri}")
+#     data: bytes = await ctx.read_resource(resource_uri)
 
-    # Open with PIL and ensure RGB
-    img = PILImage.open(io.BytesIO(data)).convert("RGB")
+#     # Open with PIL and ensure RGB
+#     img = PILImage.open(io.BytesIO(data)).convert("RGB")
 
-    # Invert colors
-    neg = ImageOps.invert(img)
+#     # Invert colors
+#     neg = ImageOps.invert(img)
 
-    # Return as MCP image
-    return to_mcp_image(neg, format="jpeg")
+#     # Return as MCP image
+#     return to_mcp_image(neg, format="jpeg")
 
 # Build the main ASGI app with Streamable HTTP mounted
 mcp_asgi = mcp.streamable_http_app()
