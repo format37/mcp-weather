@@ -2,11 +2,13 @@ import os
 import contextlib
 import logging
 import uvicorn
-import requests
+# import requests
 from starlette.applications import Starlette
 from starlette.routing import Mount
-
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Image as MCPImage
+from mcp_image_utils import to_mcp_image
+from PIL import Image as PILImage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,10 +17,19 @@ logger = logging.getLogger(__name__)
 # to match the configured base URL and prevent redirects.
 mcp = FastMCP("negative-image", streamable_http_path="/negative-image/", json_response=True)
 
+# @mcp.tool()
+# def example_tool(image_url: str) -> dict:
+#     """Returning hello world for testing."""
+#     return {"message": f"Hello, world! You sent {image_url}"}
+
 @mcp.tool()
-def example_tool(image_url: str) -> dict:
-    """Returning hello world for testing."""
-    return {"message": f"Hello, world! You sent {image_url}"}
+def negative_image(image: MCPImage) -> MCPImage:
+    """Generate a negative image."""
+    # Load and return the image
+    # img = PILImage.open(temp_png_path)
+    # mcp_img = to_mcp_image(img, format='png')
+    # return mcp_img
+    return to_mcp_image(-image.data)
 
 # Build the main ASGI app with Streamable HTTP mounted
 mcp_asgi = mcp.streamable_http_app()
