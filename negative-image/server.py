@@ -41,7 +41,7 @@ def negative_image(image_url: str) -> MCPImage:
 
 
 @mcp.tool()
-async def negative_image_from_resource(resource: str, ctx: Context) -> MCPImage:
+async def negative_image_from_resource(ctx: Context, resource_uri: str) -> MCPImage:
     """Generate a negative image from a client-provided resource URI.
 
     Pass a resource URI exposed by the MCP client (e.g., an attached file).
@@ -49,7 +49,8 @@ async def negative_image_from_resource(resource: str, ctx: Context) -> MCPImage:
     and returns the result as JPEG.
     """
     # Read binary data from the client-managed resource
-    data: bytes = await ctx.read_resource(resource)
+    await ctx.debug(f"Reading resource: {resource_uri}")
+    data: bytes = await ctx.read_resource(resource_uri)
 
     # Open with PIL and ensure RGB
     img = PILImage.open(io.BytesIO(data)).convert("RGB")
