@@ -2,3 +2,4 @@ __pycache__/
 .claude/
 mcp/.env
 examples/
+prompt.md

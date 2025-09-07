@@ -10,6 +10,8 @@ from mcp.server.fastmcp import Image as MCPImage, Context
 from mcp_image_utils import to_mcp_image, retrieve_image_from_url
 from PIL import Image as PILImage, ImageOps
 import io
+import base64
+import urllib.parse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,12 +50,47 @@ async def negative_image_from_resource(ctx: Context, resource_uri: str) -> MCPIm
     The server streams the bytes via the MCP session, inverts the image,
     and returns the result as JPEG.
     """
-    # Read binary data from the client-managed resource
-    await ctx.debug(f"Reading resource: {resource_uri}")
-    data: bytes = await ctx.read_resource(resource_uri)
+    # Support a few common input forms to reduce user confusion:
+    # - http(s)://...               → download directly
+    # - data:[mime];base64,...      → parse inline base64
+    # - <scheme>://...              → ask client to read resource via MCP
+    # - bare IDs (e.g. user_uploaded_file_...) are NOT valid URIs → helpful error
 
-    # Open with PIL and ensure RGB
-    img = PILImage.open(io.BytesIO(data)).convert("RGB")
+    # Direct HTTP(S) fetch
+    if resource_uri.startswith("http://") or resource_uri.startswith("https://"):
+        await ctx.debug(f"Fetching HTTP image: {resource_uri}")
+        img = retrieve_image_from_url(resource_uri).convert("RGB")
+
+    # Data URI (inline base64 or url-encoded)
+    elif resource_uri.startswith("data:"):
+        await ctx.debug("Parsing data URI image input")
+        try:
+            header, payload = resource_uri.split(",", 1)
+        except ValueError:
+            raise ValueError("Invalid data URI; expected 'data:[mime];base64,<data>'")
+
+        if ";base64" in header:
+            data = base64.b64decode(payload)
+        else:
+            data = urllib.parse.unquote_to_bytes(payload)
+        img = PILImage.open(io.BytesIO(data)).convert("RGB")
+
+    # Client-managed resource via MCP (must have a URI scheme)
+    elif "://" in resource_uri:
+        await ctx.debug(f"Reading client resource via MCP: {resource_uri}")
+        data: bytes = await ctx.read_resource(resource_uri)
+        img = PILImage.open(io.BytesIO(data)).convert("RGB")
+
+    # Bare IDs are not valid URIs
+    else:
+        await ctx.error(
+            "Expected a resource URI (e.g., file://..., upload://..., data:..., https://...). "
+            f"Got a bare identifier: '{resource_uri}'. This likely refers to a client-specific "
+            "upload ID (e.g., 'user_uploaded_file_*') which cannot be read without its full URI."
+        )
+        raise ValueError(
+            "Invalid resource identifier. Pass a full URI like file://..., upload://..., data:..., or https://..."
+        )
 
     # Invert colors
     neg = ImageOps.invert(img)
