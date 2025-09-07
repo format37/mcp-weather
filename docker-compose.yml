@@ -19,7 +19,7 @@ services:
   mcp-weather:
     container_name: mcp-weather-resource-server
     runtime: runc
-    build: mcp
+    build: weather
     logging:
       options:
         max-size: "10m"
