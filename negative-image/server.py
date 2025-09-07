@@ -75,8 +75,8 @@ async def negative_image_from_resource(ctx: Context, resource_uri: str) -> MCPIm
             data = urllib.parse.unquote_to_bytes(payload)
         img = PILImage.open(io.BytesIO(data)).convert("RGB")
 
-    # Client-managed resource via MCP (must have a URI scheme)
-    elif "://" in resource_uri:
+    # Client-managed resource via MCP (must have a URI scheme, but not HTTP/HTTPS)
+    elif "://" in resource_uri and not (resource_uri.startswith("http://") or resource_uri.startswith("https://")):
         await ctx.debug(f"Reading client resource via MCP: {resource_uri}")
         data: bytes = await ctx.read_resource(resource_uri)
         img = PILImage.open(io.BytesIO(data)).convert("RGB")
