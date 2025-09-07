@@ -7,8 +7,8 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp import Image as MCPImage
-from mcp_image_utils import to_mcp_image
-from PIL import Image as PILImage
+from mcp_image_utils import to_mcp_image, retrieve_image_from_url
+from PIL import Image as PILImage, ImageOps
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,13 +23,20 @@ mcp = FastMCP("negative-image", streamable_http_path="/negative-image/", json_re
 #     return {"message": f"Hello, world! You sent {image_url}"}
 
 @mcp.tool()
-def negative_image(image: MCPImage) -> MCPImage:
-    """Generate a negative image."""
-    # Load and return the image
-    # img = PILImage.open(temp_png_path)
-    # mcp_img = to_mcp_image(img, format='png')
-    # return mcp_img
-    return to_mcp_image(-image.data)
+def negative_image(image_url: str) -> MCPImage:
+    """Generate a negative image from a URL.
+
+    Pass an HTTP(S) URL to an image. The server downloads it, inverts
+    the colors, and returns the processed image as JPEG.
+    """
+    # Load source image from URL and ensure RGB
+    img = retrieve_image_from_url(image_url).convert("RGB")
+
+    # Invert colors
+    neg = ImageOps.invert(img)
+
+    # Return as MCP image
+    return to_mcp_image(neg, format="jpeg")
 
 # Build the main ASGI app with Streamable HTTP mounted
 mcp_asgi = mcp.streamable_http_app()
