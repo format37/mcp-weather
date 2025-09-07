@@ -1,6 +1,7 @@
 import base64
 import io
 import requests
+import os
 
 from PIL import Image as PILImage
 from mcp.server.fastmcp import Image as MCPImage
