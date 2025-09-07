@@ -1,8 +1,8 @@
 rtlm.info {
     tls /server/fullchain.pem /server/privkey.pem
-    # WEATHER → /weather/*
-    @weather path /weather*
-    handle_path @weather {
+
+    # WEATHER → /weather/* (strip prefix)
+    handle_path /weather* {
         reverse_proxy mcp-weather:8001
     }
 
