@@ -8,3 +8,4 @@ starlette>=0.28.0
 uvicorn>=0.31.1
 # fastapi not required for this example
 # pydantic-ai not required (removed weather_assistant)
+Pillow==11.3.0
