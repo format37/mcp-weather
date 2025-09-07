@@ -11,9 +11,9 @@ from mcp.server.fastmcp import FastMCP
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastMCP server under a unique path to avoid cookie/session collisions
-# when multiple MCPs are hosted on the same domain behind the gateway.
-mcp = FastMCP("weather", streamable_http_path="/weather")
+# Initialize FastMCP under a unique path ending with '/'
+# to match the configured base URL and prevent redirects.
+mcp = FastMCP("weather", streamable_http_path="/weather/")
 
 
 @mcp.tool()
@@ -55,6 +55,9 @@ def main():
         port=PORT,
         log_level=os.getenv("LOG_LEVEL", "info"),
         access_log=True,
+        # Behind Caddy: respect X-Forwarded-* and use https in redirects
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )
 
 if __name__ == "__main__":
