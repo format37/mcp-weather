@@ -79,8 +79,16 @@ async def negative_image_from_resource(ctx: Context, resource_uri: str) -> MCPIm
     # Client-managed resource via MCP (must have a URI scheme, but not HTTP/HTTPS)
     elif "://" in resource_uri and not (resource_uri.startswith("http://") or resource_uri.startswith("https://")):
         await ctx.debug(f"Reading client resource via MCP: {resource_uri}")
-        data: bytes = await ctx.read_resource(resource_uri)
-        img = PILImage.open(io.BytesIO(data)).convert("RGB")
+        try:
+            data: bytes = await ctx.read_resource(resource_uri)
+            img = PILImage.open(io.BytesIO(data)).convert("RGB")
+        except Exception as e:
+            await ctx.error(f"Failed to read resource '{resource_uri}': {e}")
+            await ctx.info("To use local files, try one of these approaches:")
+            await ctx.info("1. Upload the file to Claude first, then use the https://files.claude.ai/... URL") 
+            await ctx.info("2. Convert the file to a data URI (data:image/png;base64,...)")
+            await ctx.info("3. Use the negative_image tool with a direct URL instead")
+            raise ValueError(f"Could not access resource '{resource_uri}'. The client must expose this resource via MCP protocol.")
 
     # Bare IDs are not valid URIs
     else:
