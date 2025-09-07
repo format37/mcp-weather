@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastMCP under a unique path ending with '/'
 # to match the configured base URL and prevent redirects.
-mcp = FastMCP("negative-image", streamable_http_path="/negative-image/")
+mcp = FastMCP("negative-image", streamable_http_path="/negative-image/", json_response=True)
 
 @mcp.tool()
 def example_tool(image_url: str) -> dict:
@@ -53,6 +53,7 @@ def main():
         # Behind Caddy: respect X-Forwarded-* and use https in redirects
         proxy_headers=True,
         forwarded_allow_ips="*",
+        timeout_keep_alive=75,
     )
 
 if __name__ == "__main__":

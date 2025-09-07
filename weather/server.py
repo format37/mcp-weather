@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastMCP under a unique path ending with '/'
 # to match the configured base URL and prevent redirects.
-mcp = FastMCP("weather", streamable_http_path="/weather/")
+mcp = FastMCP("weather", streamable_http_path="/weather/", json_response=True)
 
 
 @mcp.tool()
@@ -58,6 +58,7 @@ def main():
         # Behind Caddy: respect X-Forwarded-* and use https in redirects
         proxy_headers=True,
         forwarded_allow_ips="*",
+        timeout_keep_alive=75,
     )
 
 if __name__ == "__main__":
