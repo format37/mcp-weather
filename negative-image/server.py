@@ -50,6 +50,7 @@ async def negative_image_from_resource(ctx: Context, resource_uri: str) -> MCPIm
     The server streams the bytes via the MCP session, inverts the image,
     and returns the result as JPEG.
     """
+    await ctx.debug(f"Received resource_uri: '{resource_uri}'")
     # Support a few common input forms to reduce user confusion:
     # - http(s)://...               → download directly
     # - data:[mime];base64,...      → parse inline base64
@@ -84,12 +85,12 @@ async def negative_image_from_resource(ctx: Context, resource_uri: str) -> MCPIm
     # Bare IDs are not valid URIs
     else:
         await ctx.error(
-            "Expected a resource URI (e.g., file://..., upload://..., data:..., https://...). "
-            f"Got a bare identifier: '{resource_uri}'. This likely refers to a client-specific "
+            f"Expected a resource URI (e.g., file://..., upload://..., data:..., https://...). "
+            f"Got: '{resource_uri}'. This likely refers to a client-specific "
             "upload ID (e.g., 'user_uploaded_file_*') which cannot be read without its full URI."
         )
         raise ValueError(
-            "Invalid resource identifier. Pass a full URI like file://..., upload://..., data:..., or https://..."
+            f"Invalid resource identifier: '{resource_uri}'. Pass a full URI like file://..., upload://..., data:..., or https://..."
         )
 
     # Invert colors
