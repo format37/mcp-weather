@@ -6,9 +6,14 @@ rtlm.info {
         reverse_proxy mcp-weather:8001
     }
 
+    # NEGATIVE-IMAGE → /negative-image/* (strip prefix)
+    handle_path /negative-image* {
+        reverse_proxy mcp-negative-image:8002
+    }
+
     # Root response (optional)
     handle_path / {
-        respond "RTLM MCP Gateway up. Try /weather/" 200
+        respond "RTLM MCP Gateway up. Try /weather/ or /negative-image/" 200
     }
 
     # Basic hardening headers

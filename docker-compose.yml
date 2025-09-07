@@ -33,6 +33,25 @@ services:
     expose:
       - "8001"
     restart: unless-stopped
+  
+  # Negative Image MCP app (HTTP internal)
+  mcp-negative-image:
+    container_name: mcp-negative-image-resource-server
+    runtime: runc
+    build: negative-image
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - PORT=8002
+      - TZ=UTC
+    expose:
+      - "8002"
+    restart: unless-stopped
 
 volumes:
   caddy_data:
