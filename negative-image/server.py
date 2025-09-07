@@ -6,9 +6,10 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp import Image as MCPImage
+from mcp.server.fastmcp import Image as MCPImage, Context
 from mcp_image_utils import to_mcp_image, retrieve_image_from_url
 from PIL import Image as PILImage, ImageOps
+import io
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,6 +32,27 @@ def negative_image(image_url: str) -> MCPImage:
     """
     # Load source image from URL and ensure RGB
     img = retrieve_image_from_url(image_url).convert("RGB")
+
+    # Invert colors
+    neg = ImageOps.invert(img)
+
+    # Return as MCP image
+    return to_mcp_image(neg, format="jpeg")
+
+
+@mcp.tool()
+async def negative_image_from_resource(resource: str, ctx: Context) -> MCPImage:
+    """Generate a negative image from a client-provided resource URI.
+
+    Pass a resource URI exposed by the MCP client (e.g., an attached file).
+    The server streams the bytes via the MCP session, inverts the image,
+    and returns the result as JPEG.
+    """
+    # Read binary data from the client-managed resource
+    data: bytes = await ctx.read_resource(resource)
+
+    # Open with PIL and ensure RGB
+    img = PILImage.open(io.BytesIO(data)).convert("RGB")
 
     # Invert colors
     neg = ImageOps.invert(img)
