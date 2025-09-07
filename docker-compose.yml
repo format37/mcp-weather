@@ -1,21 +1,37 @@
+version: "3.9"
+
 services:
+  # Reverse proxy + TLS terminator
+  caddy:
+    image: caddy:2.8
+    container_name: mcp-gateway
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+  # Weather MCP app (HTTP internal)
   mcp-weather:
     container_name: mcp-weather-resource-server
-    # restart: unless-stopped
     runtime: runc
     build: mcp
     logging:
       options:
         max-size: "10m"
         max-file: "3"
-    network_mode: host
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /etc/letsencrypt/live/rtlm.info/fullchain.pem:/server/fullchain.pem:ro
-      - /etc/letsencrypt/live/rtlm.info/privkey.pem:/server/privkey.pem:ro
     environment:
-      - PORT=443
+      - PORT=8001
       - TZ=UTC
-      - SSL_CERTFILE=/server/fullchain.pem
-      - SSL_KEYFILE=/server/privkey.pem
+    expose:
+      - "8001"
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

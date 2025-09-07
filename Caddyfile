@@ -1,0 +1,21 @@
+rtlm.info {
+    # WEATHER → /weather/*
+    @weather path /weather*
+    handle_path @weather {
+        reverse_proxy mcp-weather:8001
+    }
+
+    # Root response (optional)
+    handle_path / {
+        respond "RTLM MCP Gateway up. Try /weather/" 200
+    }
+
+    # Basic hardening headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+    }
+}
+
