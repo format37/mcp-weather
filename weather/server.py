@@ -11,8 +11,9 @@ from mcp.server.fastmcp import FastMCP
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastMCP server and expose Streamable HTTP at mount root
-mcp = FastMCP("weather", streamable_http_path="/")
+# Initialize FastMCP server under a unique path to avoid cookie/session collisions
+# when multiple MCPs are hosted on the same domain behind the gateway.
+mcp = FastMCP("weather", streamable_http_path="/weather")
 
 
 @mcp.tool()
@@ -34,6 +35,7 @@ async def lifespan(_: Starlette):
 
 app = Starlette(
     routes=[
+        # Mount at root; internal app handles /weather path routing
         Mount("/", app=mcp_asgi),
     ],
     lifespan=lifespan,

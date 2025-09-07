@@ -1,13 +1,13 @@
 rtlm.info {
     tls /server/fullchain.pem /server/privkey.pem
 
-    # WEATHER → /weather/* (strip prefix)
-    handle_path /weather* {
+    # WEATHER → /weather/* (preserve prefix for cookie path scoping)
+    handle /weather* {
         reverse_proxy mcp-weather:8001
     }
 
-    # NEGATIVE-IMAGE → /negative-image/* (strip prefix)
-    handle_path /negative-image* {
+    # NEGATIVE-IMAGE → /negative-image/* (preserve prefix for cookie path scoping)
+    handle /negative-image* {
         reverse_proxy mcp-negative-image:8002
     }
 
