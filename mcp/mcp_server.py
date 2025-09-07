@@ -41,34 +41,19 @@ app = Starlette(
 
 def main():
     """
-    Main function to run the uvicorn server with HTTPS support
+    Run the uvicorn server without SSL (TLS handled by Caddy).
     """
-    PORT = int(os.getenv("PORT", "443"))
-    SSL_CERTFILE = os.getenv("SSL_CERTFILE", "/etc/ssl/certs/server.crt")
-    SSL_KEYFILE = os.getenv("SSL_KEYFILE", "/etc/ssl/private/server.key")
-    
-    logger.info(f"Starting Weather MCP server on port {PORT}")
-    
-    uvicorn_kwargs = {
-        "app": app,
-        "host": os.getenv("HOST", "0.0.0.0"),  # bind address
-        "port": PORT,
-        "log_level": os.getenv("LOG_LEVEL", "info"),
-        "access_log": True,
-    }
+    PORT = int(os.getenv("PORT", "8001"))
 
-    # Check if SSL certificates exist and configure HTTPS
-    if os.path.exists(SSL_CERTFILE) and os.path.exists(SSL_KEYFILE):
-        uvicorn_kwargs["ssl_certfile"] = SSL_CERTFILE
-        uvicorn_kwargs["ssl_keyfile"] = SSL_KEYFILE
-        logger.info(f"HTTPS enabled with certificates: cert={SSL_CERTFILE}, key={SSL_KEYFILE}")
-    else:
-        logger.warning("SSL certificates not found. Running with HTTP only.")
-        logger.warning(f"Expected cert: {SSL_CERTFILE}")
-        logger.warning(f"Expected key: {SSL_KEYFILE}")
-        logger.warning("To enable HTTPS, provide SSL_CERTFILE and SSL_KEYFILE environment variables")
+    logger.info(f"Starting Weather MCP server (HTTP) on port {PORT}")
 
-    uvicorn.run(**uvicorn_kwargs)
+    uvicorn.run(
+        app=app,
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=PORT,
+        log_level=os.getenv("LOG_LEVEL", "info"),
+        access_log=True,
+    )
 
 if __name__ == "__main__":
     main()
